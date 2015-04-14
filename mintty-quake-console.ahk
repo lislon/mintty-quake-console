@@ -59,6 +59,7 @@ widthConsoleWindow := initialWidth
 
 isVisible := False
 isFullScreen := False
+scriptEnabled := True
 
 ;*******************************************************************************
 ;               Hotkeys
@@ -87,7 +88,8 @@ Menu, Tray, Add, About, AboutDlg
 Menu, Tray, Add, Reload, ReloadSub
 Menu, Tray, Add, Exit, ExitSub
 
-init()
+
+;init()
 return
 ;*******************************************************************************
 ;               Functions / Labels
@@ -96,19 +98,21 @@ init()
 {
     global
     initCount++
-    ; get last active window
-    WinGet, hw_current, ID, A
-    if !WinExist("ahk_class mintty") {
-        Run %minttyPath_args%, %cygwinBinDir%, Hide, hw_mintty
-        WinWait ahk_pid %hw_mintty%
-    }
-    else {
-        WinGet, hw_mintty, PID, ahk_class mintty
-    }
+    if(initCount == 1) {
+        ; get last active window
+        WinGet, hw_current, ID, A
+        if !WinExist("ahk_class mintty") {
+            Run %minttyPath_args%, %cygwinBinDir%, Hide, hw_mintty
+            WinWait ahk_pid %hw_mintty%
+        }
+        else {
+            WinGet, hw_mintty, PID, ahk_class mintty
+        }
 
 
-    WinGetPos, OrigXpos, OrigYpos, OrigWinWidth, OrigWinHeight, ahk_pid %hw_mintty%
-    toggleScript("init")
+        WinGetPos, OrigXpos, OrigYpos, OrigWinWidth, OrigWinHeight, ahk_pid %hw_mintty%
+        toggleScript("init")
+    }
 }
 
 toggle()
@@ -133,11 +137,11 @@ toggle()
 
 Slide(Window, Dir)
 {
-    global initialWidth, animationModeFade, animationModeSlide, animationStep, animationTimeout, autohide, isVisible, currentTrans, initialTrans, isFullScreen
+    global initialWidth, animationModeFade, animationModeSlide, animationStep, animationTimeout, autohide, isVisible, currentTrans, initialTrans, isFullScreen, hw_mintty, heightConsoleWindow
     WinGetPos, Xpos, Ypos, WinWidth, WinHeight, %Window%
     
     WinGet, testTrans, Transparent, %Window%
-    OutputDebug currentTrans=%currentTrans% testTrans=%testTrans%
+    ;OutputDebug Slide currentTrans=%currentTrans% testTrans=%testTrans%
     if (testTrans = "" or (animationModeFade and currentTrans = 0))
     {
         ; Solution for Windows 8 to find window without borders, only 1st call will flash borders
@@ -150,7 +154,7 @@ Slide(Window, Dir)
     }
 
     VirtScreenPos(ScreenLeft, ScreenTop, ScreenWidth, ScreenHeight)
-    OutputDebug ScreenLeft=%ScreenLeft% Height=%ScreenHeight%
+    ;OutputDebug ScreenLeft=%ScreenLeft% Height=%ScreenHeight%
     
     if (animationModeFade)
     {
@@ -167,7 +171,7 @@ Slide(Window, Dir)
       }
       WinMove, %Window%,, WinLeft,,,%heightConsoleWindow%
     }
-    OutputDebug Dir=%Dir% isFullScreen=%isFullScreen%
+    ;OutputDebug Dir=%Dir% isFullScreen=%isFullScreen%
     ; Adjust window height
     ;if (Dir = "In" && isFullScreen) {
         ;heightConsoleWindow:=ScreenHeight
@@ -202,7 +206,11 @@ Slide(Window, Dir)
     }
 
     If (Dir = "In")  {
-        WinMove, %Window%,,, ScreenTop
+        ; Odd redraw workaround
+        heightConsoleWindow += 50
+        WinMove, %Window%,,, ScreenTop,,%heightConsoleWindow%
+        heightConsoleWindow -= 50
+        WinMove, ahk_pid %hw_mintty%,,,,,%heightConsoleWindow%
         if (autohide)
             SetTimer, HideWhenInactive, 250
         isVisible := True
@@ -219,7 +227,6 @@ toggleScript(state) {
     ; enable/disable script effects, hotkeys, etc
     global
     ; WinGetPos, Xpos, Ypos, WinWidth, WinHeight, ahk_pid %hw_mintty%
-    OutputDebug toggleScript %state%
     if(state = "on" or state = "init") {
         If !WinExist("ahk_pid" . hw_mintty) {
             init()
@@ -246,9 +253,9 @@ toggleScript(state) {
         scriptEnabled := True
         Menu, Tray, Check, Enabled
 
-        if (state = "init" and initCount = 1 and startHidden) {
-            return
-        }
+        ;if (state = "init" and initCount = 1 and startHidden) {
+            ;return
+        ;}
 
         WinShow ahk_pid %hw_mintty%
         WinActivate ahk_pid %hw_mintty%
@@ -287,6 +294,7 @@ ToggleVisible:
 return
 
 ToggleScriptState:
+    init()
     if(scriptEnabled)
         toggleScript("off")
     else
@@ -334,6 +342,18 @@ ShowOptionsGui:
     OptionsGui()
 return
 
+FullScreen()
+{
+    global hw_mintty, initialHeight, isFullScreen
+    if(WinActive("ahk_pid" . hw_mintty)) {
+        WinGetPos, WindowLeft, WindowTop, WindowWidth, WindowHeight, ahk_pid %hw_mintty%
+        ScreenPos(WindowLeft, WindowTop, ScreenLeft, ScreenTop, ScreenWidth, ScreenHeight)
+        heightConsoleWindow := isFullScreen ? initialHeight : ScreenHeight
+        isFullScreen := !isFullScreen
+        WinMove, ahk_pid %hw_mintty%,,,,, heightConsoleWindow
+    }
+}
+
 ;*******************************************************************************
 ;               Extra Hotkeys
 ;*******************************************************************************
@@ -366,39 +386,55 @@ return
 ; Ctrl+Alt+Numpad* Full Screen
 ^!NumpadMult::
 #NumpadMult::
-    if(WinActive("ahk_pid" . hw_mintty)) {
-        WinGetPos, WindowLeft, WindowTop, WindowWidth, WindowHeight, ahk_pid %hw_mintty%
-        ScreenPos(WindowLeft, WindowTop, ScreenLeft, ScreenTop, ScreenWidth, ScreenHeight)
-        heightConsoleWindow := isFullScreen ? initialHeight : ScreenHeight
-        isFullScreen := !isFullScreen
-        WinMove, ahk_pid %hw_mintty%,,,,, heightConsoleWindow
-    }
-
+#Enter::
+    FullScreen()
 return
+
+; Toggle fullscreen on
+#Down::
+    if (!isFullScreen) {
+        FullScreen()
+    }
+return
+
+; Toggle fullscreen off
+#Up::
+    if (isFullScreen) {
+        FullScreen()
+    }
+return
+#R::
+    heightConsoleWindow += 50
+    WinMove, ahk_pid %hw_mintty%,,,,,%heightConsoleWindow%
+    heightConsoleWindow -= 50
+    WinMove, ahk_pid %hw_mintty%,,,,,%heightConsoleWindow%
+return
+
 ; Win+Left Move to left screen
 #Left::
     WinGetPos, WindowLeft, WindowTop, WindowWidth, WindowHeight, ahk_pid %hw_mintty%
     GetSceensEdges(LeftMostLeft, RightMostLeft)
     if (WindowLeft > LeftMostLeft) {
         ScreenPos(WindowLeft - 100, 500, SibLeft, SibTop, SibWidth, SibHeight)
+        WinMove, ahk_pid %hw_mintty%, , %SibLeft%, %SibTop%
         if (isFullScreen) {
-            heightConsoleWindow:=SibHeight
+            WinMove, ahk_pid %hw_mintty%,,,,,%heightConsoleWindow%
         }
-        WinMove, ahk_pid %hw_mintty%, , %SibLeft%, %SibTop%,,%heightConsoleWindow%
     }
 return
 ; Win+Right Move to right screen
 #Right::
     WinGetPos, WindowLeft, WindowTop, WindowWidth, WindowHeight, ahk_pid %hw_mintty%
-    OutputDebug Move right, WindowLeft = %WindowLeft%
     GetSceensEdges(LeftMostLeft, RightMostLeft)
     if (WindowLeft < RightMostLeft) {
         ScreenRight := WindowLeft + ScreenWidth
         ScreenPos(ScreenRight + 100, 500, SibLeft, SibTop, SibWidth, SibHeight)
+        WinMove, ahk_pid %hw_mintty%, , %SibLeft%, %SibTop%
+        ; We need to do WinMove two times, otherwise if the new heightConsoleWindow value > current screen height, WinMove will fail
         if (isFullScreen) {
             heightConsoleWindow:=SibHeight
+            WinMove, ahk_pid %hw_mintty%,,,,,%heightConsoleWindow%
         }
-        WinMove, ahk_pid %hw_mintty%, , %SibLeft%, %SibTop%,,%heightConsoleWindow%
     }
 return
 
@@ -545,7 +581,6 @@ VirtScreenPos(ByRef mLeft, ByRef mTop, ByRef mWidth, ByRef mHeight)
 {
     Coordmode, Mouse, Screen
     MouseGetPos,x,y
-    OutputDebug MouseGetPos: %x%, %y%
     ScreenPos(x, y, mLeft, mTop, mWidth, mHeight)
 }
 
